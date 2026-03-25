@@ -29,6 +29,7 @@ type KeyMap struct {
 	Delete              key.Binding `category:"Actions"`
 	Preview             key.Binding `category:"Actions"`
 	Print               key.Binding `category:"Actions"`
+	Save                key.Binding `category:"Actions"`
 	Open                key.Binding `category:"Actions"`
 	ScrollCenter        key.Binding `category:"Navigation"`
 	ScrollTop           key.Binding `category:"Navigation"`
@@ -188,6 +189,10 @@ func init() {
 		Print: key.NewBinding(
 			key.WithKeys("P"),
 			key.WithHelp("", "print to stdout"),
+		),
+		Save: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("", "save node to /tmp/fx/"),
 		),
 		Open: key.NewBinding(
 			key.WithKeys("v"),

@@ -14,6 +14,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/antonmedv/clipboard"
 	"github.com/charmbracelet/bubbles/key"
@@ -367,6 +368,7 @@ type model struct {
 	deletePending         bool
 	zPending              bool
 	zoomStack             []*Node
+	savedPath             string
 }
 
 type location struct {
@@ -504,6 +506,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.searching = false
 		m.searchCancel = nil
+		return m, nil
+
+	case savedMsg:
+		m.savedPath = msg.path
+		return m, tea.Tick(2*time.Second, func(_ time.Time) tea.Msg {
+			return clearSavedMsg{}
+		})
+
+	case clearSavedMsg:
+		m.savedPath = ""
 		return m, nil
 
 	case tea.ResumeMsg:
@@ -1072,6 +1084,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keyMap.Print):
 		return m, m.print()
 
+	case key.Matches(msg, keyMap.Save):
+		return m, m.saveNode()
+
 	case key.Matches(msg, keyMap.Open):
 		return m, m.open()
 
@@ -1628,6 +1643,36 @@ func (m *model) dig(v string) *Node {
 	}
 
 	return nodes[found.Index]
+}
+
+type savedMsg struct {
+	path string
+}
+
+type clearSavedMsg struct{}
+
+func (m *model) saveNode() tea.Cmd {
+	value := m.cursorValue()
+	if value == "" {
+		return nil
+	}
+
+	dir := "/tmp/fx"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil
+	}
+
+	entries, _ := os.ReadDir(dir)
+	n := len(entries) + 1
+	path := filepath.Join(dir, strconv.Itoa(n)+".json")
+
+	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		return savedMsg{path: path}
+	}
 }
 
 func (m *model) print() tea.Cmd {

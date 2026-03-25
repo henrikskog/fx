@@ -189,7 +189,10 @@ func (m *model) View() string {
 		screen = append(screen, theme.CurrentTheme.StatusBar(statusBar)...)
 	}
 
-	if m.yank {
+	if m.savedPath != "" {
+		screen = append(screen, '\n')
+		screen = append(screen, []byte("saved: "+m.savedPath)...)
+	} else if m.yank {
 		screen = append(screen, '\n')
 		screen = append(screen, []byte("(y)value  (p)path  (k)key  (b)key+value")...)
 	} else if m.zPending {
