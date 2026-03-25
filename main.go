@@ -365,6 +365,7 @@ type model struct {
 	keysIndexNodes        []*Node
 	fuzzyMatch            *fuzzy.Match
 	deletePending         bool
+	zPending              bool
 }
 
 type location struct {
@@ -542,6 +543,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.yank {
 			return m.handleYankKey(msg)
 		}
+		if m.zPending {
+			return m.handleZKey(msg)
+		}
 		if m.showShowSelector {
 			return m.handleShowSelectorKey(msg)
 		}
@@ -661,6 +665,79 @@ func (m *model) handleShowSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.showShowSelector = false
 	return m, nil
+}
+
+var (
+	zKey = key.NewBinding(key.WithKeys("z"))
+	zTop = key.NewBinding(key.WithKeys("t"))
+	zBot = key.NewBinding(key.WithKeys("b"))
+)
+
+func (m *model) handleZKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, zKey):
+		m.scrollCursorToCenter()
+	case key.Matches(msg, zTop):
+		m.scrollCursorToTop()
+	case key.Matches(msg, zBot):
+		m.scrollCursorToBottom()
+	}
+	m.zPending = false
+	return m, nil
+}
+
+func (m *model) scrollCursorToCenter() {
+	node, ok := m.cursorPointsTo()
+	if !ok {
+		return
+	}
+	half := m.viewHeight() / 2
+	m.head = node
+	for i := 0; i < half; i++ {
+		if m.head.Prev == nil {
+			break
+		}
+		m.head = m.head.Prev
+	}
+	m.cursor = 0
+	n := m.head
+	for n != nil && n != node {
+		m.cursor++
+		n = n.Next
+	}
+	m.showCursor = true
+}
+
+func (m *model) scrollCursorToTop() {
+	node, ok := m.cursorPointsTo()
+	if !ok {
+		return
+	}
+	m.head = node
+	m.cursor = 0
+	m.showCursor = true
+}
+
+func (m *model) scrollCursorToBottom() {
+	node, ok := m.cursorPointsTo()
+	if !ok {
+		return
+	}
+	vh := m.viewHeight()
+	m.head = node
+	for i := 1; i < vh; i++ {
+		if m.head.Prev == nil {
+			break
+		}
+		m.head = m.head.Prev
+	}
+	m.cursor = 0
+	n := m.head
+	for n != nil && n != node {
+		m.cursor++
+		n = n.Next
+	}
+	m.showCursor = true
 }
 
 func (m *model) handlePendingDelete(msg tea.Msg) {
@@ -878,6 +955,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.redoSearch()
 		m.selectNode(at)
+
+	case key.Matches(msg, zKey):
+		m.zPending = true
 
 	case key.Matches(msg, keyMap.ShowSelector):
 		m.showShowSelector = true
@@ -1185,6 +1265,9 @@ func (m *model) viewHeight() int {
 		return m.termHeight - 2
 	}
 	if m.yank {
+		return m.termHeight - 2
+	}
+	if m.zPending {
 		return m.termHeight - 2
 	}
 	if m.showShowSelector {

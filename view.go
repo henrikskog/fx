@@ -184,6 +184,9 @@ func (m *model) View() string {
 	if m.yank {
 		screen = append(screen, '\n')
 		screen = append(screen, []byte("(y)value  (p)path  (k)key  (b)key+value")...)
+	} else if m.zPending {
+		screen = append(screen, '\n')
+		screen = append(screen, []byte("(z)center  (t)top  (b)bottom")...)
 	} else if m.showShowSelector {
 		screen = append(screen, '\n')
 		screen = append(screen, []byte("(s)sizes  (l)line numbers")...)

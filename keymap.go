@@ -30,6 +30,9 @@ type KeyMap struct {
 	Preview             key.Binding `category:"Actions"`
 	Print               key.Binding `category:"Actions"`
 	Open                key.Binding `category:"Actions"`
+	ScrollCenter        key.Binding `category:"Navigation"`
+	ScrollTop           key.Binding `category:"Navigation"`
+	ScrollBottom        key.Binding `category:"Navigation"`
 	ToggleWrap          key.Binding `category:"View"`
 	ShowSelector        key.Binding `category:"View"`
 	GoBack              key.Binding `category:"Navigation"`
@@ -132,8 +135,20 @@ func init() {
 			key.WithKeys("K", "shift+up"),
 			key.WithHelp("", "previous sibling"),
 		),
-		ToggleWrap: key.NewBinding(
+		ScrollCenter: key.NewBinding(
 			key.WithKeys("z"),
+			key.WithHelp("zz", "scroll cursor to center"),
+		),
+		ScrollTop: key.NewBinding(
+			key.WithKeys("z"),
+			key.WithHelp("zt", "scroll cursor to top"),
+		),
+		ScrollBottom: key.NewBinding(
+			key.WithKeys("z"),
+			key.WithHelp("zb", "scroll cursor to bottom"),
+		),
+		ToggleWrap: key.NewBinding(
+			key.WithKeys("w"),
 			key.WithHelp("", "toggle strings wrap"),
 		),
 		ShowSelector: key.NewBinding(
