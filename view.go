@@ -40,6 +40,9 @@ func (m *model) View() string {
 		if n == nil {
 			break
 		}
+		if m.isZoomed() && !m.nodeInZoomScope(n) {
+			break
+		}
 
 		if m.showLineNumbers {
 			lineNumbersWidth := len(strconv.Itoa(m.totalLines))
@@ -52,7 +55,8 @@ func (m *model) View() string {
 			screen = append(screen, ' ', ' ')
 		}
 
-		for i := 0; i < int(n.Depth); i++ {
+		depth := int(n.Depth) - m.zoomDepthOffset()
+		for i := 0; i < depth; i++ {
 			screen = append(screen, ident.IdentBytes...)
 		}
 
@@ -176,7 +180,11 @@ func (m *model) View() string {
 			statusBarWidth += 2 // adjust for spinner
 		}
 
-		info := fmt.Sprintf("%s %s", indicator, m.fileName)
+		var zoomIndicator string
+		if m.isZoomed() {
+			zoomIndicator = "[zoomed] "
+		}
+		info := fmt.Sprintf("%s %s%s", indicator, zoomIndicator, m.fileName)
 		statusBar := flex(statusBarWidth, m.cursorPath(), info)
 		screen = append(screen, theme.CurrentTheme.StatusBar(statusBar)...)
 	}

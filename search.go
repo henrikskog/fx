@@ -19,10 +19,15 @@ func (m *model) doSearch(s string) tea.Cmd {
 	id := m.searchID
 	cancel := m.searchCancel
 	top := m.top
+	var end *Node
+	if m.isZoomed() {
+		top = m.zoomRoot()
+		end = m.zoomRoot().End.Next
+	}
 	query := s
 
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
-		result, err := executeSearch(top, query, cancel)
+		result, err := executeSearch(top, end, query, cancel)
 		if err != nil {
 			errSearch := newSearch()
 			errSearch.err = err
@@ -68,8 +73,15 @@ func (m *model) redoSearch() {
 
 	cursor := m.search.cursor
 
+	top := m.top
+	var end *Node
+	if m.isZoomed() {
+		top = m.zoomRoot()
+		end = m.zoomRoot().End.Next
+	}
+
 	// Perform search synchronously (no cancellation needed for redo)
-	result, err := executeSearch(m.top, s, nil)
+	result, err := executeSearch(top, end, s, nil)
 	if err != nil {
 		m.search = newSearch()
 		m.search.err = err
@@ -108,7 +120,8 @@ type piece struct {
 
 // executeSearch performs the core search logic and returns the results.
 // It can be cancelled via the cancel channel (pass nil for non-cancellable search).
-func executeSearch(top *Node, s string, cancel <-chan struct{}) (*search, error) {
+// Pass end as nil to search the entire document, or a boundary node to stop before.
+func executeSearch(top *Node, end *Node, s string, cancel <-chan struct{}) (*search, error) {
 	code, ci := regexCase(s)
 	if ci {
 		code = "(?i)" + code
@@ -123,7 +136,7 @@ func executeSearch(top *Node, s string, cancel <-chan struct{}) (*search, error)
 	n := top
 	searchIndex := 0
 
-	for n != nil {
+	for n != nil && n != end {
 		// Check for cancellation if channel provided
 		if cancel != nil {
 			select {

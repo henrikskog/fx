@@ -20,7 +20,11 @@ func (m *model) runCommand(s string) (tea.Model, tea.Cmd) {
 }
 
 func gotoLine(m *model, num int) {
-	m.selectNode(findNode(m, num))
+	node := findNode(m, num)
+	if node != nil && m.isZoomed() && !m.nodeInZoomScope(node) {
+		return
+	}
+	m.selectNode(node)
 
 	m.commandInput.SetValue("")
 	m.recordHistory()

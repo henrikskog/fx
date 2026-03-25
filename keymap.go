@@ -35,6 +35,8 @@ type KeyMap struct {
 	ScrollBottom        key.Binding `category:"Navigation"`
 	ToggleWrap          key.Binding `category:"View"`
 	ShowSelector        key.Binding `category:"View"`
+	Zoom                key.Binding `category:"Navigation"`
+	Unzoom              key.Binding `category:"Navigation"`
 	GoBack              key.Binding `category:"Navigation"`
 	GoForward           key.Binding `category:"Navigation"`
 	Help                key.Binding `category:"Other"`
@@ -190,6 +192,14 @@ func init() {
 		Open: key.NewBinding(
 			key.WithKeys("v"),
 			key.WithHelp("", "open in editor"),
+		),
+		Zoom: key.NewBinding(
+			key.WithKeys("."),
+			key.WithHelp("", "zoom into node"),
+		),
+		Unzoom: key.NewBinding(
+			key.WithKeys(","),
+			key.WithHelp("", "zoom out"),
 		),
 		GoBack: key.NewBinding(
 			key.WithKeys("["),

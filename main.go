@@ -366,6 +366,7 @@ type model struct {
 	fuzzyMatch            *fuzzy.Match
 	deletePending         bool
 	zPending              bool
+	zoomStack             []*Node
 }
 
 type location struct {
@@ -391,6 +392,39 @@ type searchResultMsg struct {
 
 type searchCancelledMsg struct {
 	id uint64
+}
+
+func (m *model) isZoomed() bool {
+	return len(m.zoomStack) > 0
+}
+
+func (m *model) zoomRoot() *Node {
+	if len(m.zoomStack) == 0 {
+		return nil
+	}
+	return m.zoomStack[len(m.zoomStack)-1]
+}
+
+func (m *model) zoomDepthOffset() int {
+	if r := m.zoomRoot(); r != nil {
+		return int(r.Depth)
+	}
+	return 0
+}
+
+func (m *model) nodeInZoomScope(n *Node) bool {
+	zr := m.zoomRoot()
+	if zr == nil {
+		return true
+	}
+	at := n
+	for at != nil {
+		if at == zr {
+			return true
+		}
+		at = at.Parent
+	}
+	return false
 }
 
 func (m *model) Init() tea.Cmd {
@@ -694,7 +728,7 @@ func (m *model) scrollCursorToCenter() {
 	half := m.viewHeight() / 2
 	m.head = node
 	for i := 0; i < half; i++ {
-		if m.head.Prev == nil {
+		if m.head.Prev == nil || m.head == m.zoomRoot() {
 			break
 		}
 		m.head = m.head.Prev
@@ -726,7 +760,7 @@ func (m *model) scrollCursorToBottom() {
 	vh := m.viewHeight()
 	m.head = node
 	for i := 1; i < vh; i++ {
-		if m.head.Prev == nil {
+		if m.head.Prev == nil || m.head == m.zoomRoot() {
 			break
 		}
 		m.head = m.head.Prev
@@ -801,7 +835,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.recordHistory()
 
 	case key.Matches(msg, keyMap.GotoTop):
-		m.head = m.top
+		if m.isZoomed() {
+			m.head = m.zoomRoot()
+		} else {
+			m.head = m.top
+		}
 		m.cursor = 0
 		m.showCursor = true
 		m.recordHistory()
@@ -823,7 +861,7 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			nextSibling = pointsTo.Next
 		}
-		if nextSibling != nil {
+		if nextSibling != nil && m.nodeInZoomScope(nextSibling) {
 			m.selectNode(nextSibling)
 		}
 		m.recordHistory()
@@ -846,7 +884,7 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				prevSibling = parent
 			}
 		}
-		if prevSibling != nil {
+		if prevSibling != nil && m.nodeInZoomScope(prevSibling) {
 			m.selectNode(prevSibling)
 		}
 		m.recordHistory()
@@ -859,7 +897,7 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if n.HasChildren() && !n.IsCollapsed() {
 			n.Collapse()
 		} else {
-			if n.Parent != nil {
+			if n.Parent != nil && n != m.zoomRoot() {
 				n = n.Parent
 			}
 		}
@@ -898,7 +936,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		at, ok := m.cursorPointsTo()
 		if ok {
 			m.collapsed = true
-			n := m.top
+			var n *Node
+			if m.isZoomed() {
+				n = m.zoomRoot()
+			} else {
+				n = m.top
+			}
 			for n != nil {
 				if n.Kind != Err {
 					n.CollapseRecursively()
@@ -909,7 +952,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					n = n.End.Next
 				}
 			}
-			m.selectNode(at.Root())
+			if m.isZoomed() {
+				m.selectNode(m.zoomRoot())
+			} else {
+				m.selectNode(at.Root())
+			}
 			m.recordHistory()
 		}
 
@@ -919,7 +966,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.collapsed = false
-		n := m.top
+		var n *Node
+		if m.isZoomed() {
+			n = m.zoomRoot()
+		} else {
+			n = m.top
+		}
 		for n != nil {
 			n.ExpandRecursively(0, math.MaxInt)
 			if n.End == nil {
@@ -938,6 +990,38 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			at.ExpandRecursively(0, toLevel)
 			m.showCursor = true
 		}
+
+	case key.Matches(msg, keyMap.Zoom):
+		n, ok := m.cursorPointsTo()
+		if !ok {
+			return m, nil
+		}
+		if !n.HasChildren() {
+			return m, nil
+		}
+		if n.IsCollapsed() {
+			n.Expand()
+		}
+		m.zoomStack = append(m.zoomStack, n)
+		m.head = n
+		m.cursor = 0
+		m.showCursor = true
+		if m.searchInput.Value() != "" {
+			m.redoSearch()
+		}
+		m.recordHistory()
+
+	case key.Matches(msg, keyMap.Unzoom):
+		if !m.isZoomed() {
+			return m, nil
+		}
+		prev := m.zoomStack[len(m.zoomStack)-1]
+		m.zoomStack = m.zoomStack[:len(m.zoomStack)-1]
+		m.selectNode(prev)
+		if m.searchInput.Value() != "" {
+			m.redoSearch()
+		}
+		m.recordHistory()
 
 	case key.Matches(msg, keyMap.ToggleWrap):
 		at, ok := m.cursorPointsTo()
@@ -1006,7 +1090,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if isRef {
 			refPath, ok := jsonpath.ParseSchemaRef(value)
 			if ok {
-				m.selectNode(m.findByPath(refPath))
+				target := m.findByPath(refPath)
+				if target != nil && m.isZoomed() && !m.nodeInZoomScope(target) {
+					return m, nil
+				}
+				m.selectNode(target)
 				m.recordHistory()
 			}
 		}
@@ -1038,9 +1126,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.locationIndex--
 
 			loc := m.locationHistory[m.locationIndex]
-			for loc.node == at && m.locationIndex > 0 {
+			for (loc.node == at || !m.nodeInZoomScope(loc.node)) && m.locationIndex > 0 {
 				m.locationIndex--
 				loc = m.locationHistory[m.locationIndex]
+			}
+			if !m.nodeInZoomScope(loc.node) {
+				return m, nil
 			}
 			m.selectNode(loc.head)
 			m.selectNode(loc.node)
@@ -1050,6 +1141,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.locationIndex < len(m.locationHistory)-1 {
 			m.locationIndex++
 			loc := m.locationHistory[m.locationIndex]
+			if m.isZoomed() && !m.nodeInZoomScope(loc.node) {
+				return m, nil
+			}
 			m.selectNode(loc.head)
 			m.selectNode(loc.node)
 		}
@@ -1068,7 +1162,7 @@ func (m *model) up() {
 	m.cursor--
 	if m.cursor < 0 {
 		m.cursor = 0
-		if m.head.Prev != nil {
+		if m.head.Prev != nil && m.head != m.zoomRoot() {
 			m.head = m.head.Prev
 		}
 	}
@@ -1080,8 +1174,12 @@ func (m *model) down() {
 	}
 	m.showCursor = true
 	m.cursor++
-	_, ok := m.cursorPointsTo()
+	pointsTo, ok := m.cursorPointsTo()
 	if !ok {
+		m.cursor--
+		return
+	}
+	if !m.nodeInZoomScope(pointsTo) {
 		m.cursor--
 		return
 	}
@@ -1116,6 +1214,13 @@ func (m *model) recordHistory() {
 }
 
 func (m *model) scrollToBottom() {
+	if m.isZoomed() {
+		m.head = m.zoomRoot().End
+		m.cursor = 0
+		m.showCursor = true
+		m.scrollIntoView()
+		return
+	}
 	if m.bottom == nil {
 		return
 	}
@@ -1143,7 +1248,7 @@ func (m *model) scrollIntoView() {
 	if m.cursor >= visibleLines {
 		m.cursor = visibleLines - 1
 	}
-	for visibleLines < m.viewHeight() && m.head.Prev != nil {
+	for visibleLines < m.viewHeight() && m.head.Prev != nil && m.head != m.zoomRoot() {
 		visibleLines++
 		m.cursor++
 		m.head = m.head.Prev
@@ -1152,7 +1257,7 @@ func (m *model) scrollIntoView() {
 
 func (m *model) scrollBackward(lines int) {
 	it := m.head
-	for it.Prev != nil {
+	for it.Prev != nil && it != m.zoomRoot() {
 		it = it.Prev
 		if lines--; lines == 0 {
 			break
@@ -1167,6 +1272,9 @@ func (m *model) scrollForward(lines int) {
 	}
 	it := m.head
 	for it.Next != nil {
+		if m.isZoomed() && it == m.zoomRoot().End {
+			break
+		}
 		it = it.Next
 		if lines--; lines == 0 {
 			break
@@ -1471,7 +1579,12 @@ func (m *model) createKeysIndex() {
 	if !ok {
 		return
 	}
-	root := at.Root()
+	var root *Node
+	if m.isZoomed() {
+		root = m.zoomRoot()
+	} else {
+		root = at.Root()
+	}
 	if root == nil {
 		return
 	}
@@ -1548,6 +1661,9 @@ func (m *model) open() tea.Cmd {
 func (m *model) deleteAtCursor() {
 	at, ok := m.cursorPointsTo()
 	if !ok || at == nil {
+		return
+	}
+	if m.isZoomed() && at == m.zoomRoot() {
 		return
 	}
 	if next, ok := DeleteNode(at); ok {
